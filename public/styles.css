@@ -1,0 +1,255 @@
+:root {
+  --bg: #0b1320;
+  --panel: #111d30;
+  --panel-border: #2c4366;
+  --text: #eef4ff;
+  --muted: #9bb0ce;
+  --accent: #36d399;
+  --accent-2: #5bc0ff;
+  --danger: #ff7a8a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 10% 5%, rgba(54, 211, 153, 0.22), transparent 45%),
+    radial-gradient(circle at 95% 0%, rgba(91, 192, 255, 0.18), transparent 35%),
+    linear-gradient(135deg, #060b14 0%, #0b1320 60%, #0d1a2b 100%);
+  min-height: 100vh;
+}
+
+.app {
+  width: min(1100px, 95vw);
+  margin: 2rem auto;
+  display: grid;
+  gap: 1rem;
+}
+
+.hero {
+  border: 1px solid var(--panel-border);
+  background: rgba(17, 29, 48, 0.8);
+  border-radius: 14px;
+  padding: 1rem 1.2rem;
+}
+
+.hero-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.hero-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: clamp(1.2rem, 2.4vw, 1.7rem);
+}
+
+.hero p {
+  margin: 0.5rem 0 0;
+  color: var(--muted);
+}
+
+.panel {
+  border: 1px solid var(--panel-border);
+  background: rgba(17, 29, 48, 0.8);
+  border-radius: 14px;
+  padding: 1rem 1.2rem;
+}
+
+.panel h2 {
+  margin-top: 0;
+  font-size: 1rem;
+}
+
+.onboarding {
+  display: grid;
+  place-items: center;
+}
+
+.access-card {
+  width: min(560px, 100%);
+}
+
+.subtle {
+  margin: -0.3rem 0 0.2rem;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
+label {
+  display: grid;
+  gap: 0.4rem;
+  font-size: 0.92rem;
+}
+
+input,
+textarea {
+  width: 100%;
+  border: 1px solid #38557f;
+  background: #0a1422;
+  color: var(--text);
+  border-radius: 10px;
+  padding: 0.7rem;
+  font: inherit;
+}
+
+input:focus,
+textarea:focus {
+  outline: 2px solid rgba(91, 192, 255, 0.55);
+  border-color: var(--accent-2);
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.83rem;
+  color: var(--muted);
+}
+
+.messages {
+  display: grid;
+  gap: 0.7rem;
+  max-height: 45vh;
+  overflow: auto;
+  margin-bottom: 0.8rem;
+  padding-right: 0.2rem;
+}
+
+.msg {
+  border-radius: 12px;
+  padding: 0.7rem 0.8rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.msg.user {
+  border: 1px solid #2f6ba9;
+  background: rgba(47, 107, 169, 0.18);
+}
+
+.msg.assistant {
+  border: 1px solid #2f8e75;
+  background: rgba(54, 211, 153, 0.14);
+}
+
+.msg.loading {
+  border-style: dashed;
+}
+
+.loading-dots {
+  display: inline-block;
+  width: 1.4rem;
+  overflow: hidden;
+  vertical-align: bottom;
+  animation: dots 1s steps(4, end) infinite;
+}
+
+@keyframes dots {
+  0% {
+    width: 0;
+  }
+  100% {
+    width: 1.4rem;
+  }
+}
+
+.msg.error {
+  border: 1px solid #b54554;
+  background: rgba(255, 122, 138, 0.12);
+  color: #ffd2d8;
+}
+
+.error-text {
+  color: #ffd2d8;
+}
+
+.composer {
+  display: grid;
+  gap: 0.7rem;
+}
+
+button {
+  justify-self: start;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--accent), #20c087);
+  color: #022417;
+  font-weight: 700;
+  padding: 0.62rem 1rem;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.lang-toggle {
+  justify-self: auto;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid #4a6795;
+  padding: 0.42rem 0.65rem;
+  min-width: 56px;
+}
+
+.lang-toggle:hover {
+  border-color: var(--accent-2);
+}
+
+.strict-toggle {
+  justify-self: auto;
+  background: rgba(54, 211, 153, 0.12);
+  color: var(--text);
+  border: 1px solid #3f8d78;
+  padding: 0.42rem 0.65rem;
+  min-width: 142px;
+}
+
+.strict-toggle.off {
+  background: transparent;
+  border-color: #4a6795;
+}
+
+.access-toggle {
+  justify-self: auto;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid #4a6795;
+  padding: 0.42rem 0.65rem;
+  min-width: 74px;
+}
+
+.access-toggle:hover {
+  border-color: var(--accent-2);
+}
+
+.chat-full {
+  min-height: 62vh;
+}
+
+.hidden {
+  display: none !important;
+}
+
+@media (max-width: 720px) {
+  .app {
+    margin: 1rem auto;
+  }
+
+  .messages {
+    max-height: 40vh;
+  }
+}
