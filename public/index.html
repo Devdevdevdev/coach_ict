@@ -12,13 +12,11 @@
         <div class="hero-top">
           <h1 id="appTitle">COACH ICT</h1>
           <div class="hero-controls">
-            <button id="strictToggle" class="strict-toggle" type="button" aria-label="Toggle ICT strict mode">ICT STRICT: ON</button>
             <button id="accessScreenButton" class="access-toggle" type="button">Accès</button>
             <button id="langToggle" class="lang-toggle" type="button" aria-label="Switch language">FR</button>
           </div>
         </div>
         <p id="appSubtitle">Mon coach ICT/SMC: analyse multi-timeframe et points d'entrée précis.</p>
-        <p id="strictHint" class="hint">Mode ICT strict actif: Biais 1H, Setup 15M, Entrée 5M, SL/TP/RR, Invalidations.</p>
       </header>
       <section id="onboardingView" class="onboarding">
         <section class="panel access-card">
@@ -28,10 +26,6 @@
             <label>
               <span id="kimiLabel">Clé API Kimi</span>
               <input id="onboardingKimiApiKey" type="password" placeholder="sk-..." autocomplete="off" />
-            </label>
-            <label>
-              <span id="tvLabel">ID / Session TradingView</span>
-              <input id="onboardingTvSession" type="password" placeholder="session id / token local" autocomplete="off" />
             </label>
             <p id="accessHint" class="hint">Aucune clé n'est commitée. BYOK obligatoire pour chaque utilisateur.</p>
             <p id="onboardingError" class="hint error-text hidden"></p>
@@ -43,16 +37,20 @@
       <section id="chatView" class="chat-view hidden">
         <section class="panel chat chat-full">
           <h2 id="assistantTitle">Mon COACH ICT</h2>
+          <section class="coach-launch">
+            <label class="symbol-picker">
+              <span id="symbolSelectLabel">Paire à analyser</span>
+              <select id="symbolSelect">
+                <option value="XAUUSD">XAUUSD</option>
+                <option value="XAGUSD">XAGUSD</option>
+                <option value="EURUSD">EURUSD</option>
+                <option value="GBPUSD">GBPUSD</option>
+                <option value="USDJPY">USDJPY</option>
+              </select>
+            </label>
+            <button id="runCoachButton" type="button">Lancer Coach IA</button>
+          </section>
           <div id="messages" class="messages" aria-live="polite"></div>
-
-          <form id="chatForm" class="composer">
-            <textarea
-              id="messageInput"
-              placeholder="Ex: XAUUSD (le coach analysera automatiquement 1H, 15M, 5M)"
-              rows="3"
-            ></textarea>
-            <button id="sendButton" type="submit">Envoyer</button>
-          </form>
         </section>
       </section>
     </main>

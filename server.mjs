@@ -31,7 +31,7 @@ loadLocalEnvFile();
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '127.0.0.1';
 const KIMI_BASE_URL = process.env.KIMI_BASE_URL || 'https://api.moonshot.ai/v1';
-const TRADINGVIEW_BRIDGE_URL = String(process.env.TRADINGVIEW_BRIDGE_URL || '').trim();
+const YAHOO_CHART_BASE = 'https://query1.finance.yahoo.com/v8/finance/chart';
 const COACH_REFERENCE_PDF_PATH = join(process.cwd(), 'ICT-Trading-Strategy.pdf');
 const COACH_REFERENCE_AVAILABLE = existsSync(COACH_REFERENCE_PDF_PATH);
 
@@ -41,59 +41,6 @@ const MIME_TYPES = {
   '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8'
 };
-
-const TOOL_SCHEMAS = [
-  {
-    type: 'function',
-    function: {
-      name: 'get_chart_snapshot',
-      description: 'Get current chart/symbol state from TradingView connector',
-      parameters: {
-        type: 'object',
-        properties: {
-          symbol: {
-            type: 'string',
-            description: 'Target symbol, e.g. OANDA:XAUUSD or BINANCE:BTCUSDT'
-          },
-          timeframe: {
-            type: 'string',
-            description: 'Preferred timeframe like 1m, 5m, 15m, 1h, 1D'
-          }
-        },
-        required: []
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'set_symbol',
-      description: 'Change chart symbol in TradingView connector',
-      parameters: {
-        type: 'object',
-        properties: {
-          symbol: { type: 'string', description: 'Ticker/symbol, e.g. OANDA:XAUUSD' },
-          timeframe: { type: 'string', description: 'Optional timeframe like 5m, 15m, 1h, 1d' }
-        },
-        required: ['symbol']
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'run_backtest',
-      description: 'Run strategy backtest through TradingView bridge',
-      parameters: {
-        type: 'object',
-        properties: {
-          idea: { type: 'string', description: 'Strategy idea to test' }
-        },
-        required: ['idea']
-      }
-    }
-  }
-];
 
 function sendJson(res, status, data) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -140,13 +87,12 @@ async function serveStatic(req, res) {
   }
 }
 
-async function callKimi({ apiKey, messages, tools }) {
+async function callKimi({ apiKey, messages }) {
   const payload = {
     model: 'kimi-k2-0711-preview',
     temperature: 0.2,
     messages
   };
-  if (tools) payload.tools = tools;
 
   const response = await fetch(`${KIMI_BASE_URL}/chat/completions`, {
     method: 'POST',
@@ -161,159 +107,116 @@ async function callKimi({ apiKey, messages, tools }) {
     const text = await response.text();
     throw new Error(`Kimi API error (${response.status}): ${text}`);
   }
-
   return response.json();
 }
 
-async function runStrictICTCoach({
-  apiKey,
-  userMessage,
-  tradingviewSession,
-  lang,
-  requestedSymbol
-}) {
-  const symbol = requestedSymbol || 'XAUUSD';
-  const tfList = ['1h', '15m', '5m'];
-  const snapshots = {};
-  const errors = [];
+function normalizeInputSymbol(symbol) {
+  const s = String(symbol || '').toUpperCase().trim();
+  if (!s) return '';
+  if (s.includes(':')) return s.split(':').pop() || s;
+  return s;
+}
 
-  for (const tf of tfList) {
-    await tradingViewToolExecutor({
-      toolName: 'set_symbol',
-      args: { symbol, timeframe: tf },
-      tradingviewSession
-    });
+function toYahooSymbols(symbol) {
+  const s = normalizeInputSymbol(symbol);
+  if (!s) return [];
+  if (s === 'XAUUSD') return ['GC=F', 'XAUUSD=X'];
+  if (s === 'XAGUSD') return ['SI=F', 'XAGUSD=X'];
+  if (s === 'EURUSD') return ['EURUSD=X'];
+  if (s === 'GBPUSD') return ['GBPUSD=X'];
+  if (s === 'USDJPY') return ['USDJPY=X'];
+  if (/^[A-Z]{3,6}USDT$/.test(s)) return [`${s.replace('USDT', '')}-USD`];
+  return [s];
+}
 
-    const snapshotResult = await tradingViewToolExecutor({
-      toolName: 'get_chart_snapshot',
-      args: { symbol, timeframe: tf },
-      tradingviewSession
-    });
+function timeframeToYahoo(tf) {
+  const t = String(tf || '').toLowerCase();
+  if (t === '1h') return { interval: '60m', range: '1mo' };
+  if (t === '15m') return { interval: '15m', range: '7d' };
+  if (t === '5m') return { interval: '5m', range: '5d' };
+  if (t === '1d') return { interval: '1d', range: '6mo' };
+  return { interval: '15m', range: '7d' };
+}
 
-    if (snapshotResult?.ok === true && snapshotResult?.data) {
-      snapshots[tf] = snapshotResult.data;
-    } else {
-      errors.push({
-        timeframe: tf,
-        errorCode: snapshotResult?.errorCode || 'SNAPSHOT_FAILED',
-        message: snapshotResult?.message || 'Unknown snapshot error'
-      });
-    }
+async function fetchOHLC(symbol, timeframe, limit = 300) {
+  const candidates = toYahooSymbols(symbol);
+  if (candidates.length === 0) {
+    return { ok: false, errorCode: 'INVALID_SYMBOL', message: 'symbol is required' };
   }
+  const spec = timeframeToYahoo(timeframe);
+  let lastError = { errorCode: 'MARKETDATA_EMPTY', message: 'No market data available' };
 
-  if (errors.length > 0) {
-    return {
-      ok: false,
-      error: {
-        errorCode: 'STRICT_SNAPSHOTS_FAILED',
-        message:
-          lang === 'en'
-            ? `Missing snapshots for strict mode: ${JSON.stringify(errors)}`
-            : `Snapshots manquants pour le mode strict: ${JSON.stringify(errors)}`
+  for (const mapped of candidates) {
+    const url =
+      `${YAHOO_CHART_BASE}/${encodeURIComponent(mapped)}` +
+      `?interval=${encodeURIComponent(spec.interval)}&range=${encodeURIComponent(spec.range)}`;
+    try {
+      const res = await fetch(url, { headers: { 'User-Agent': 'coach-ict/1.0' } });
+      if (!res.ok) {
+        lastError = { errorCode: 'MARKETDATA_HTTP_ERROR', message: `HTTP ${res.status} on ${mapped}` };
+        continue;
       }
-    };
-  }
 
-  const responseFormat =
-    lang === 'en'
-      ? [
-          'Output exactly with these sections and no extra ending question:',
-          '1) 1H Bias',
-          '2) 15M Setup',
-          '3) 5M Entry Trigger',
-          '4) Trade Plan (Entry, SL, TP, RR)',
-          '5) Invalidations',
-          '6) Coach Note (short and direct)'
-        ].join('\n')
-      : [
-          'Réponds exactement avec ces sections et sans question finale:',
-          '1) Biais 1H',
-          '2) Setup 15M',
-          '3) Trigger Entrée 5M',
-          '4) Plan de Trade (Entrée, SL, TP, RR)',
-          '5) Invalidations',
-          '6) Note Coach (courte et directe)'
-        ].join('\n');
+      const data = await res.json();
+      const chartError = data?.chart?.error;
+      if (chartError) {
+        lastError = {
+          errorCode: 'MARKETDATA_PROVIDER_ERROR',
+          message: `${chartError?.code || 'ERROR'} on ${mapped}`
+        };
+        continue;
+      }
 
-  const strictMessages = [
-    {
-      role: 'system',
-      content:
-        'Tu es Mon COACH ICT/SMC. Style: coach pro, direct, clair, orienté execution. ' +
-        'Tu dois faire un vrai débrief ICT (orderblocks, FVG, liquidité, displacement, CHoCH/BOS si pertinent). ' +
-        'Tu analyses la meme paire en 1H/15M/5M, puis donnes un plan executable. ' +
-        'Tu ne poses pas de question finale. Tu termines par une consigne d action concrete. ' +
-        'Si un niveau précis n est pas confirmé, dis ATTENDRE au lieu d inventer.'
-    },
-    {
-      role: 'user',
-      content:
-        `Symbole demande: ${symbol}\n` +
-        `Demande utilisateur: ${userMessage}\n` +
-        `Snapshots verifies:\n${JSON.stringify(snapshots, null, 2)}\n\n` +
-        `${responseFormat}\n` +
-        (lang === 'en'
-          ? 'Use markdown with short headings and bullet points. Mention explicit numeric levels only if justified by provided data.'
-          : 'Utilise du markdown avec des titres courts et des points clairs. Donne des niveaux chiffrés seulement si justifiés par les données fournies.')
+      const result = data?.chart?.result?.[0];
+      const timestamps = result?.timestamp || [];
+      const quote = result?.indicators?.quote?.[0] || {};
+      const candles = [];
+      for (let i = 0; i < timestamps.length; i += 1) {
+        const o = quote.open?.[i];
+        const h = quote.high?.[i];
+        const l = quote.low?.[i];
+        const c = quote.close?.[i];
+        if ([o, h, l, c].every((v) => Number.isFinite(v))) {
+          candles.push({
+            time: Number(timestamps[i]),
+            open: Number(o),
+            high: Number(h),
+            low: Number(l),
+            close: Number(c)
+          });
+        }
+      }
+
+      if (candles.length === 0) {
+        lastError = { errorCode: 'MARKETDATA_EMPTY', message: `Empty candles on ${mapped}` };
+        continue;
+      }
+
+      const sliced = candles.slice(-Math.max(10, limit));
+      const last = sliced[sliced.length - 1] || null;
+      return {
+        ok: true,
+        data: {
+          symbol: normalizeInputSymbol(symbol),
+          providerSymbol: mapped,
+          timeframe: String(timeframe || '').toLowerCase(),
+          candles: sliced,
+          last
+        }
+      };
+    } catch (error) {
+      lastError = {
+        errorCode: 'MARKETDATA_FETCH_FAILED',
+        message: error instanceof Error ? error.message : 'Unknown market data error'
+      };
     }
-  ];
+  }
 
-  const completion = await callKimi({
-    apiKey,
-    messages: strictMessages
-  });
-
-  const assistant = String(completion?.choices?.[0]?.message?.content || '(No content)');
   return {
-    ok: true,
-    reply: assistant,
-    snapshots
+    ok: false,
+    errorCode: lastError.errorCode,
+    message: lastError.message
   };
-}
-
-async function callTradingViewBridge({ toolName, args, tradingviewSession }) {
-  if (!TRADINGVIEW_BRIDGE_URL) {
-    return {
-      ok: false,
-      source: 'tradingview-live',
-      errorCode: 'CONNECTOR_NOT_CONFIGURED',
-      message:
-        'No live TradingView connector is configured. Set TRADINGVIEW_BRIDGE_URL to enable real market data.'
-    };
-  }
-
-  const response = await fetch(`${TRADINGVIEW_BRIDGE_URL.replace(/\/$/, '')}/tool`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      toolName,
-      args,
-      tradingviewSession
-    })
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    return {
-      ok: false,
-      source: 'tradingview-live',
-      errorCode: 'CONNECTOR_HTTP_ERROR',
-      message: `TradingView connector error (${response.status}): ${text}`
-    };
-  }
-
-  const payload = await response.json();
-  return {
-    source: 'tradingview-live',
-    ...payload
-  };
-}
-
-async function tradingViewToolExecutor({ toolName, args, tradingviewSession }) {
-  if (!['get_chart_snapshot', 'set_symbol', 'run_backtest'].includes(toolName)) {
-    throw new Error(`Unknown tool: ${toolName}`);
-  }
-  return callTradingViewBridge({ toolName, args, tradingviewSession });
 }
 
 function parseUserIntent(message) {
@@ -324,6 +227,14 @@ function parseUserIntent(message) {
 
   if (/\bxauusd\b/.test(text) || /\bgold\b/.test(text) || /\bor\b/.test(text)) {
     requestedSymbol = 'XAUUSD';
+  } else if (/\bxagusd\b/.test(text) || /\bsilver\b/.test(text)) {
+    requestedSymbol = 'XAGUSD';
+  } else if (/\beurusd\b/.test(text)) {
+    requestedSymbol = 'EURUSD';
+  } else if (/\bgbpusd\b/.test(text)) {
+    requestedSymbol = 'GBPUSD';
+  } else if (/\busdjpy\b/.test(text)) {
+    requestedSymbol = 'USDJPY';
   } else if (/\bbtc(usdt)?\b/.test(text)) {
     requestedSymbol = 'BTCUSDT';
   } else if (/\beth(usdt)?\b/.test(text)) {
@@ -346,24 +257,6 @@ function parseUserIntent(message) {
   }
 
   return { requestedSymbol, requestedTimeframe };
-}
-
-function normalizeSymbol(rawSymbol) {
-  const cleaned = String(rawSymbol || '').toUpperCase().trim();
-  if (!cleaned) return '';
-  if (cleaned.includes(':')) return cleaned.split(':').pop() || cleaned;
-  return cleaned;
-}
-
-function normalizeTimeframe(rawTf) {
-  const cleaned = String(rawTf || '').toLowerCase().replace(/\s+/g, '');
-  if (!cleaned) return '';
-  if (cleaned === '15min' || cleaned === '15minutes') return '15m';
-  return cleaned;
-}
-
-function looksLikeSymbolOnlyInput(text) {
-  return /^\s*([A-Za-z]{3,10}:[A-Za-z0-9._-]+|[A-Za-z]{6}|[A-Za-z]{3,6}USDT)\s*$/i.test(String(text || ''));
 }
 
 function ensureCoachSections(text, lang) {
@@ -389,101 +282,102 @@ function ensureCoachSections(text, lang) {
   return out;
 }
 
-async function runAgentLoop({ apiKey, userMessage, tradingviewSession, lang, strictMode }) {
-  let hasTrustedMarketData = false;
-  let lastSnapshot = null;
-  let lastSnapshotError = null;
-  let lastSnapshotErrorMessage = null;
-  const replyLanguage = lang === 'en' ? 'English' : 'French';
-  const coachPrompt =
-    "Tu es un expert ICT/SMC (Mon COACH) connaissant les grands concepts de base comme orderblocks, FVG, " +
-    "prises de liquidité sur les supports/résistances. " +
-    'Tu analyseras toujours la même paire/devise sur 3 timeframes: 1H, 15M et 5M selon la demande utilisateur. ' +
-    "Ton objectif est de débriefer la tendance générale du marché et de donner les meilleurs points d'entrée en 5 minutes " +
-    'en expliquant tes décisions. Si possible, indique SL, TP et RR le plus précisément possible. ' +
-    'Reste strictement factuel: aucune donnée inventée.';
-  const coachReferenceLine = COACH_REFERENCE_AVAILABLE
-    ? `Fichier de référence coach disponible localement: ${COACH_REFERENCE_PDF_PATH}.`
-    : `Fichier de référence coach introuvable: ${COACH_REFERENCE_PDF_PATH}.`;
-  const strictStructure =
-    lang === 'en'
-      ? 'Response format must strictly be: 1) 1H Bias 2) 15M Setup 3) 5M Entry 4) SL/TP/RR 5) Invalidations.'
-      : 'Le format de réponse doit être strictement: 1) Biais 1H 2) Setup 15M 3) Entrée 5M 4) SL/TP/RR 5) Invalidations.';
-  const effectiveUserMessage = looksLikeSymbolOnlyInput(userMessage)
-    ? `${userMessage}\nAnalyse automatiquement cette paire sur 1H, 15M et 5M.`
-    : userMessage;
+async function runStrictICTCoach({ apiKey, userMessage, lang, requestedSymbol, strictMode }) {
+  const symbol = requestedSymbol || 'XAUUSD';
+  const tfList = ['1h', '15m', '5m'];
+  const snapshots = {};
+  const errors = [];
 
-  const messages = [
-    {
-      role: 'system',
-      content:
-        `${coachPrompt} Use tools whenever chart state/symbol/timeframe is needed. ` +
-        'Before any numeric entry/SL/TP, call get_chart_snapshot for requested symbol/timeframe. ' +
-        'If tools are unavailable or untrusted, refuse numeric levels and explain why. ' +
-        `${coachReferenceLine} ${strictMode ? strictStructure : ''} Respond in ${replyLanguage}.`
-    },
-    { role: 'user', content: effectiveUserMessage }
-  ];
-
-  for (let step = 0; step < 6; step += 1) {
-    const completion = await callKimi({
-      apiKey,
-      messages,
-      tools: TOOL_SCHEMAS
-    });
-
-    const choice = completion.choices?.[0]?.message;
-    if (!choice) {
-      throw new Error('Invalid Kimi response: missing choice message');
-    }
-
-    messages.push(choice);
-
-    const toolCalls = choice.tool_calls || [];
-    if (toolCalls.length === 0) {
-      return {
-        assistant: String(choice.content || '(No content)'),
-        trace: messages,
-        hasTrustedMarketData,
-        lastSnapshot,
-        lastSnapshotError,
-        lastSnapshotErrorMessage
-      };
-    }
-
-    for (const toolCall of toolCalls) {
-      const toolName = toolCall.function?.name;
-      const rawArgs = toolCall.function?.arguments || '{}';
-      let args;
-      try {
-        args = JSON.parse(rawArgs);
-      } catch {
-        args = {};
-      }
-
-      const toolResult = await tradingViewToolExecutor({
-        toolName,
-        args,
-        tradingviewSession
-      });
-
-      if (toolName === 'get_chart_snapshot' && toolResult?.ok === true && toolResult?.source === 'tradingview-live') {
-        hasTrustedMarketData = true;
-        lastSnapshot = toolResult?.data || null;
-      } else if (toolName === 'get_chart_snapshot' && toolResult?.ok === false) {
-        lastSnapshotError = toolResult?.errorCode || 'SNAPSHOT_FAILED';
-        lastSnapshotErrorMessage = toolResult?.message || null;
-      }
-
-      messages.push({
-        role: 'tool',
-        tool_call_id: toolCall.id,
-        content: JSON.stringify(toolResult)
+  for (const tf of tfList) {
+    const snapshotResult = await fetchOHLC(symbol, tf, 300);
+    if (snapshotResult?.ok === true && snapshotResult?.data) {
+      snapshots[tf] = snapshotResult.data;
+    } else {
+      errors.push({
+        timeframe: tf,
+        errorCode: snapshotResult?.errorCode || 'SNAPSHOT_FAILED',
+        message: snapshotResult?.message || 'Unknown snapshot error'
       });
     }
   }
 
-  throw new Error('Agent loop exceeded max steps');
+  if (errors.length > 0) {
+    return {
+      ok: false,
+      error: {
+        errorCode: 'STRICT_SNAPSHOTS_FAILED',
+        message:
+          lang === 'en'
+            ? `Missing OHLC data for strict mode: ${JSON.stringify(errors)}`
+            : `Données OHLC manquantes pour le mode strict: ${JSON.stringify(errors)}`
+      }
+    };
+  }
+
+  const responseFormat = strictMode
+    ? lang === 'en'
+      ? [
+          'Output exactly with these sections and no extra ending question:',
+          '1) 1H Bias',
+          '2) 15M Setup',
+          '3) 5M Entry Trigger',
+          '4) Trade Plan (Entry, SL, TP, RR)',
+          '5) Invalidations',
+          '6) Coach Note (short and direct)'
+        ].join('\n')
+      : [
+          'Réponds exactement avec ces sections et sans question finale:',
+          '1) Biais 1H',
+          '2) Setup 15M',
+          '3) Trigger Entrée 5M',
+          '4) Plan de Trade (Entrée, SL, TP, RR)',
+          '5) Invalidations',
+          '6) Note Coach (courte et directe)'
+        ].join('\n')
+    : lang === 'en'
+      ? 'Provide a concise coaching analysis using 1H/15M/5M and a practical entry plan.'
+      : 'Fais une analyse coaching concise en 1H/15M/5M avec un plan d’entrée pratique.';
+
+  const coachReferenceLine = COACH_REFERENCE_AVAILABLE
+    ? `Fichier de référence coach disponible localement: ${COACH_REFERENCE_PDF_PATH}.`
+    : `Fichier de référence coach introuvable: ${COACH_REFERENCE_PDF_PATH}.`;
+
+  const strictMessages = [
+    {
+      role: 'system',
+      content:
+        'Tu es Mon COACH ICT/SMC. Style: coach pro, direct, clair, orienté execution. ' +
+        'Tu dois faire un vrai débrief ICT (orderblocks, FVG, liquidité, displacement, CHoCH/BOS si pertinent). ' +
+        'Tu analyses la même paire en 1H/15M/5M, puis donnes un plan exécutable. ' +
+        'Tu ne poses pas de question finale. Tu termines par une consigne d’action concrète. ' +
+        'Si un niveau précis n’est pas confirmé, dis ATTENDRE au lieu d’inventer. ' +
+        coachReferenceLine
+    },
+    {
+      role: 'user',
+      content:
+        `Symbole demandé: ${symbol}\n` +
+        `Demande utilisateur: ${userMessage}\n` +
+        `OHLC vérifiés:\n${JSON.stringify(snapshots, null, 2)}\n\n` +
+        `${responseFormat}\n` +
+        (lang === 'en'
+          ? 'Use markdown with short headings and bullet points. Mention explicit numeric levels only if justified by provided data.'
+          : 'Utilise du markdown avec des titres courts et des points clairs. Donne des niveaux chiffrés seulement si justifiés par les données fournies.')
+    }
+  ];
+
+  const completion = await callKimi({
+    apiKey,
+    messages: strictMessages
+  });
+
+  const assistant = String(completion?.choices?.[0]?.message?.content || '(No content)');
+  return {
+    ok: true,
+    reply: assistant,
+    snapshots,
+    symbol
+  };
 }
 
 async function handleChat(req, res) {
@@ -493,7 +387,6 @@ async function handleChat(req, res) {
     const lang = body.lang === 'en' ? 'en' : 'fr';
     const strictMode = body.strictMode !== false;
     const requestApiKey = String(body.kimiApiKey || '').trim();
-    const tradingviewSession = String(body.tradingviewSession || '').trim();
     const apiKey = requestApiKey || String(process.env.KIMI_API_KEY || '').trim();
 
     if (!userMessage) {
@@ -512,82 +405,45 @@ async function handleChat(req, res) {
     }
 
     const intent = parseUserIntent(userMessage);
-    if (strictMode && intent.requestedSymbol) {
-      const strict = await runStrictICTCoach({
-        apiKey,
-        userMessage,
-        tradingviewSession,
-        lang,
-        requestedSymbol: intent.requestedSymbol
-      });
-      if (!strict.ok) {
-        sendJson(res, 200, {
-          reply:
-            lang === 'en'
-              ? `Unable to run strict coach mode automatically. ${strict.error.message}`
-              : `Impossible d'executer automatiquement le mode coach strict. ${strict.error.message}`,
-          toolAware: true,
-          strictMode,
-          strictAuto: true,
-          strictError: strict.error
-        });
-        return;
-      }
-
+    if (!intent.requestedSymbol) {
       sendJson(res, 200, {
-        reply: ensureCoachSections(strict.reply, lang),
-        toolAware: true,
-        strictMode,
-        strictAuto: true,
-        strictSnapshots: strict.snapshots
+        reply:
+          lang === 'en'
+            ? 'Please select a symbol (XAUUSD, XAGUSD, EURUSD, GBPUSD, USDJPY) and run coach analysis.'
+            : 'Sélectionne une paire (XAUUSD, XAGUSD, EURUSD, GBPUSD, USDJPY) puis lance l’analyse coach.',
+        toolAware: false,
+        strictMode
       });
       return;
     }
 
-    const result = await runAgentLoop({
+    const strict = await runStrictICTCoach({
       apiKey,
       userMessage,
-      tradingviewSession,
       lang,
+      requestedSymbol: intent.requestedSymbol,
       strictMode
     });
-    const snapshotSymbol = normalizeSymbol(result.lastSnapshot?.symbol);
-    const snapshotTf = normalizeTimeframe(result.lastSnapshot?.timeframe);
-    const symbolMatches = intent.requestedSymbol ? snapshotSymbol.includes(intent.requestedSymbol) : true;
-    const timeframeMatches = intent.requestedTimeframe ? snapshotTf === intent.requestedTimeframe : true;
-    const dataAligned = Boolean(result.hasTrustedMarketData && symbolMatches && timeframeMatches);
-    const connectorConfigured = Boolean(TRADINGVIEW_BRIDGE_URL);
 
-    const containsTradeIntent =
-      /(analyse|analysis|entry|entrée|sl|tp|xau|gold|or|btc|eth|signal|setup|15m|15min)/i.test(userMessage);
-
-    const reply =
-      containsTradeIntent && !dataAligned
-        ? lang === 'en'
-          ? `Unable to provide reliable numeric analysis. Cause: ${
-              !connectorConfigured
-                ? 'TRADINGVIEW_BRIDGE_URL is not configured.'
-                : result.lastSnapshotError || 'missing or mismatched live snapshot'
-            }${result.lastSnapshotErrorMessage ? ` Detail: ${result.lastSnapshotErrorMessage}.` : ''} Requested: ${intent.requestedSymbol || 'N/A'} ${intent.requestedTimeframe || 'N/A'} | Received: ${snapshotSymbol || 'N/A'} ${snapshotTf || 'N/A'}.`
-          : `Impossible de fournir une analyse chiffrée fiable. Cause: ${
-              !connectorConfigured
-                ? 'TRADINGVIEW_BRIDGE_URL non configuré.'
-                : result.lastSnapshotError || 'snapshot live absent ou non aligné'
-            }${result.lastSnapshotErrorMessage ? ` Détail: ${result.lastSnapshotErrorMessage}.` : ''} Demandé: ${intent.requestedSymbol || 'N/A'} ${intent.requestedTimeframe || 'N/A'} | Reçu: ${snapshotSymbol || 'N/A'} ${snapshotTf || 'N/A'}.`
-        : result.assistant;
+    if (!strict.ok) {
+      sendJson(res, 200, {
+        reply:
+          lang === 'en'
+            ? `Unable to run strict coach mode automatically. ${strict.error.message}`
+            : `Impossible d'exécuter automatiquement le mode coach strict. ${strict.error.message}`,
+        toolAware: false,
+        strictMode,
+        strictError: strict.error
+      });
+      return;
+    }
 
     sendJson(res, 200, {
-      reply: containsTradeIntent ? ensureCoachSections(reply, lang) : reply,
-      toolAware: true,
-      trustedMarketData: result.hasTrustedMarketData,
-      dataAligned,
-      connectorConfigured,
-      intent,
-      snapshot: result.lastSnapshot,
-      snapshotError: result.lastSnapshotError,
-      snapshotErrorMessage: result.lastSnapshotErrorMessage,
+      reply: ensureCoachSections(strict.reply, lang),
+      toolAware: false,
       strictMode,
-      traceLength: result.trace.length
+      strictSnapshots: strict.snapshots,
+      symbol: strict.symbol
     });
   } catch (error) {
     sendJson(res, 500, {
@@ -599,6 +455,24 @@ async function handleChat(req, res) {
 const server = createServer(async (req, res) => {
   if (!req.url || !req.method) {
     sendJson(res, 400, { error: 'Bad request' });
+    return;
+  }
+
+  if (req.method === 'GET' && req.url.startsWith('/api/ohlc')) {
+    try {
+      const url = new URL(req.url, `http://${HOST}:${PORT}`);
+      const symbol = String(url.searchParams.get('symbol') || '').trim();
+      const timeframe = String(url.searchParams.get('tf') || '15m').trim().toLowerCase();
+      const limit = Number(url.searchParams.get('limit') || 300);
+      const result = await fetchOHLC(symbol, timeframe, Number.isFinite(limit) ? limit : 300);
+      sendJson(res, result.ok ? 200 : 400, result);
+    } catch (error) {
+      sendJson(res, 500, {
+        ok: false,
+        errorCode: 'OHLC_ENDPOINT_FAILED',
+        message: error instanceof Error ? error.message : 'Unknown ohlc endpoint error'
+      });
+    }
     return;
   }
 
@@ -616,5 +490,10 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`Server running at http://${HOST}:${PORT}`);
+  console.log(`\n✅ COACH ICT Server running at http://${HOST}:${PORT}`);
+  console.log(`📈 Market data endpoint: ${YAHOO_CHART_BASE}`);
+  console.log(`\n🚀 Usage:`);
+  console.log(`   1. Open http://${HOST}:${PORT} in your browser`);
+  console.log(`   2. Enter your Kimi API key and click "Accès"`);
+  console.log(`   3. Select a symbol and click "Lancer Coach IA"\n`);
 });

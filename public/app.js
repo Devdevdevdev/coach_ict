@@ -3,16 +3,14 @@ const chatViewEl = document.getElementById('chatView');
 const onboardingFormEl = document.getElementById('onboardingForm');
 const onboardingErrorEl = document.getElementById('onboardingError');
 const onboardingKimiEl = document.getElementById('onboardingKimiApiKey');
-const onboardingTvEl = document.getElementById('onboardingTvSession');
 const accessContinueButtonEl = document.getElementById('accessContinueButton');
 const accessScreenButtonEl = document.getElementById('accessScreenButton');
 
 const messagesEl = document.getElementById('messages');
-const formEl = document.getElementById('chatForm');
-const inputEl = document.getElementById('messageInput');
-const sendButton = document.getElementById('sendButton');
 const langToggleEl = document.getElementById('langToggle');
-const strictToggleEl = document.getElementById('strictToggle');
+const runCoachButtonEl = document.getElementById('runCoachButton');
+const symbolSelectEl = document.getElementById('symbolSelect');
+const symbolSelectLabelEl = document.getElementById('symbolSelectLabel');
 
 const ui = {
   appTitle: document.getElementById('appTitle'),
@@ -20,18 +18,14 @@ const ui = {
   accessTitle: document.getElementById('accessTitle'),
   accessSubtle: document.getElementById('accessSubtle'),
   kimiLabel: document.getElementById('kimiLabel'),
-  tvLabel: document.getElementById('tvLabel'),
   accessHint: document.getElementById('accessHint'),
-  assistantTitle: document.getElementById('assistantTitle'),
-  strictHint: document.getElementById('strictHint')
+  assistantTitle: document.getElementById('assistantTitle')
 };
 
 const storage = {
-  kimiApiKey: 'kimi_tradingview_kimi_api_key',
-  tvSession: 'kimi_tradingview_tv_session',
-  language: 'kimi_tradingview_language',
-  strictMode: 'kimi_tradingview_strict_mode',
-  accessValidated: 'kimi_tradingview_access_validated'
+  kimiApiKey: 'coach_ict_kimi_api_key',
+  language: 'coach_ict_language',
+  accessValidated: 'coach_ict_access_validated'
 };
 
 const dictionary = {
@@ -41,24 +35,18 @@ const dictionary = {
     accessTitle: 'Accès utilisateur',
     accessSubtle: 'Renseigne tes accès une fois, puis passe au coaching.',
     kimiLabel: 'Clé API Kimi',
-    tvLabel: 'ID / Session TradingView',
-    accessHint: "Aucune clé n'est commitée. BYOK obligatoire pour chaque utilisateur.",
+    accessHint: "Aucune clé n'est commitée. La clé Kimi est obligatoire.",
     assistantTitle: 'Mon COACH ICT',
-    strictHint: 'Mode ICT strict actif: Biais 1H, Setup 15M, Entrée 5M, SL/TP/RR, Invalidations.',
-    inputPlaceholder: 'Ex: XAUUSD (le coach analysera automatiquement 1H, 15M, 5M)',
-    tvPlaceholder: 'session id / token local',
-    send: 'Envoyer',
-    sending: 'Envoi...',
+    symbolSelectLabel: 'Paire à analyser',
     loading: 'Analyse ICT en cours...',
     serverError: 'Erreur serveur',
     networkError: 'Erreur réseau',
     emptyResponse: '(réponse vide)',
-    emptyMessage: 'Veuillez saisir un message avant envoi.',
-    strictOn: 'ICT STRICT: ON',
-    strictOff: 'ICT STRICT: OFF',
+    runCoach: 'Lancer Coach IA',
+    runningCoach: 'Analyse...',
     accessButton: 'Accès',
     accessContinue: 'Valider les accès',
-    accessRequired: 'La clé Kimi et l’ID/session TradingView sont requis.',
+    accessRequired: 'La clé Kimi est requise.',
     welcome: 'COACH ICT prêt. Indique seulement la paire/symbole à analyser (ex: XAUUSD).'
   },
   en: {
@@ -67,42 +55,35 @@ const dictionary = {
     accessTitle: 'User Access',
     accessSubtle: 'Set your credentials once, then move to coaching.',
     kimiLabel: 'Kimi API Key',
-    tvLabel: 'TradingView ID / Session',
-    accessHint: 'No key is committed. BYOK is required for every user.',
+    accessHint: 'No key is committed. Kimi key is required.',
     assistantTitle: 'My ICT COACH',
-    strictHint: 'ICT strict mode active: 1H Bias, 15M Setup, 5M Entry, SL/TP/RR, Invalidations.',
-    inputPlaceholder: 'Ex: XAUUSD (coach will automatically analyze 1H, 15M, 5M)',
-    tvPlaceholder: 'session id / local token',
-    send: 'Send',
-    sending: 'Sending...',
+    symbolSelectLabel: 'Pair to analyze',
     loading: 'ICT analysis in progress...',
     serverError: 'Server error',
     networkError: 'Network error',
     emptyResponse: '(empty response)',
-    emptyMessage: 'Please enter a message before sending.',
-    strictOn: 'ICT STRICT: ON',
-    strictOff: 'ICT STRICT: OFF',
+    runCoach: 'Run AI Coach',
+    runningCoach: 'Analyzing...',
     accessButton: 'Access',
     accessContinue: 'Validate access',
-    accessRequired: 'Kimi key and TradingView ID/session are required.',
+    accessRequired: 'Kimi key is required.',
     welcome: 'COACH ICT ready. Enter only the symbol/pair to analyze (ex: XAUUSD).'
   }
 };
 
 let currentLanguage = localStorage.getItem(storage.language) === 'en' ? 'en' : 'fr';
-let strictMode = localStorage.getItem(storage.strictMode) !== 'false';
+const strictMode = true;
 let accessValidated = localStorage.getItem(storage.accessValidated) === 'true';
 
 function getStoredCredentials() {
   return {
-    kimiApiKey: (localStorage.getItem(storage.kimiApiKey) || '').trim(),
-    tradingviewSession: (localStorage.getItem(storage.tvSession) || '').trim()
+    kimiApiKey: (localStorage.getItem(storage.kimiApiKey) || '').trim()
   };
 }
 
 function hasValidCredentials() {
   const creds = getStoredCredentials();
-  return Boolean(creds.kimiApiKey && creds.tradingviewSession);
+  return Boolean(creds.kimiApiKey);
 }
 
 function t(key) {
@@ -152,18 +133,13 @@ function applyLanguage() {
   ui.accessTitle.textContent = t('accessTitle');
   ui.accessSubtle.textContent = t('accessSubtle');
   ui.kimiLabel.textContent = t('kimiLabel');
-  ui.tvLabel.textContent = t('tvLabel');
   ui.accessHint.textContent = t('accessHint');
   ui.assistantTitle.textContent = t('assistantTitle');
-  ui.strictHint.textContent = t('strictHint');
-  inputEl.placeholder = t('inputPlaceholder');
-  onboardingTvEl.placeholder = t('tvPlaceholder');
-  sendButton.textContent = t('send');
+  symbolSelectLabelEl.textContent = t('symbolSelectLabel');
   accessContinueButtonEl.textContent = t('accessContinue');
   accessScreenButtonEl.textContent = t('accessButton');
   langToggleEl.textContent = currentLanguage.toUpperCase();
-  strictToggleEl.textContent = strictMode ? t('strictOn') : t('strictOff');
-  strictToggleEl.classList.toggle('off', !strictMode);
+  runCoachButtonEl.textContent = t('runCoach');
 }
 
 function showOnboardingError(message) {
@@ -185,7 +161,6 @@ function ensureWelcomeMessage() {
 function initAccessState() {
   const creds = getStoredCredentials();
   onboardingKimiEl.value = creds.kimiApiKey;
-  onboardingTvEl.value = creds.tradingviewSession;
   if (!hasValidCredentials()) {
     accessValidated = false;
     localStorage.setItem(storage.accessValidated, 'false');
@@ -204,16 +179,9 @@ langToggleEl.addEventListener('click', () => {
   applyLanguage();
 });
 
-strictToggleEl.addEventListener('click', () => {
-  strictMode = !strictMode;
-  localStorage.setItem(storage.strictMode, String(strictMode));
-  applyLanguage();
-});
-
 accessScreenButtonEl.addEventListener('click', () => {
   const creds = getStoredCredentials();
   onboardingKimiEl.value = creds.kimiApiKey;
-  onboardingTvEl.value = creds.tradingviewSession;
   clearOnboardingError();
   setView('onboarding');
 });
@@ -221,14 +189,12 @@ accessScreenButtonEl.addEventListener('click', () => {
 onboardingFormEl.addEventListener('submit', (event) => {
   event.preventDefault();
   const kimiApiKey = onboardingKimiEl.value.trim();
-  const tradingviewSession = onboardingTvEl.value.trim();
-  if (!kimiApiKey || !tradingviewSession) {
+  if (!kimiApiKey) {
     showOnboardingError(t('accessRequired'));
     return;
   }
 
   localStorage.setItem(storage.kimiApiKey, kimiApiKey);
-  localStorage.setItem(storage.tvSession, tradingviewSession);
   localStorage.setItem(storage.accessValidated, 'true');
   accessValidated = true;
   clearOnboardingError();
@@ -236,29 +202,20 @@ onboardingFormEl.addEventListener('submit', (event) => {
   ensureWelcomeMessage();
 });
 
-formEl.addEventListener('submit', async (event) => {
-  event.preventDefault();
-
-  const message = inputEl.value.trim();
+async function submitCoachMessage(message) {
   const creds = getStoredCredentials();
-  if (!creds.kimiApiKey || !creds.tradingviewSession || !accessValidated) {
+  if (!creds.kimiApiKey || !accessValidated) {
     showOnboardingError(t('accessRequired'));
     setView('onboarding');
     return;
   }
 
-  if (!message) {
-    addMessage('error', t('emptyMessage'));
-    return;
-  }
-
   addMessage('user', message);
-  inputEl.value = '';
 
-  sendButton.disabled = true;
-  sendButton.textContent = t('sending');
+  runCoachButtonEl.disabled = true;
+  runCoachButtonEl.textContent = t('runningCoach');
+
   const loadingNode = addLoadingMessage();
-
   try {
     const response = await fetch('/api/chat', {
       method: 'POST',
@@ -266,7 +223,6 @@ formEl.addEventListener('submit', async (event) => {
       body: JSON.stringify({
         message,
         kimiApiKey: creds.kimiApiKey,
-        tradingviewSession: creds.tradingviewSession,
         lang: currentLanguage,
         strictMode
       })
@@ -285,9 +241,14 @@ formEl.addEventListener('submit', async (event) => {
     loadingNode.remove();
     addMessage('error', error?.message || t('networkError'));
   } finally {
-    sendButton.disabled = false;
-    sendButton.textContent = t('send');
+    runCoachButtonEl.disabled = false;
+    runCoachButtonEl.textContent = t('runCoach');
   }
+}
+
+runCoachButtonEl.addEventListener('click', async () => {
+  const symbol = symbolSelectEl.value;
+  await submitCoachMessage(symbol);
 });
 
 applyLanguage();

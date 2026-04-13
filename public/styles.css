@@ -96,7 +96,8 @@ label {
 }
 
 input,
-textarea {
+textarea,
+select {
   width: 100%;
   border: 1px solid #38557f;
   background: #0a1422;
@@ -107,7 +108,8 @@ textarea {
 }
 
 input:focus,
-textarea:focus {
+textarea:focus,
+select:focus {
   outline: 2px solid rgba(91, 192, 255, 0.55);
   border-color: var(--accent-2);
 }
@@ -121,7 +123,7 @@ textarea:focus {
 .messages {
   display: grid;
   gap: 0.7rem;
-  max-height: 45vh;
+  max-height: 68vh;
   overflow: auto;
   margin-bottom: 0.8rem;
   padding-right: 0.2rem;
@@ -240,6 +242,18 @@ button:disabled {
   min-height: 62vh;
 }
 
+.coach-launch {
+  display: grid;
+  grid-template-columns: minmax(180px, 260px) auto;
+  gap: 0.6rem;
+  align-items: end;
+  margin-bottom: 0.7rem;
+}
+
+.symbol-picker {
+  margin: 0;
+}
+
 .hidden {
   display: none !important;
 }
@@ -250,6 +264,6 @@ button:disabled {
   }
 
   .messages {
-    max-height: 40vh;
+    max-height: 72vh;
   }
 }

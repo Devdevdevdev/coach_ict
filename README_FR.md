@@ -1,97 +1,77 @@
 # COACH ICT (FR)
 
-COACH ICT est une application web locale qui combine:
-- un chat IA (Kimi API)
-- un bridge TradingView (CDP)
-- un mode coaching ICT/SMC structuré (1H, 15M, 5M)
+COACH ICT est une app de coaching trading IA (style ICT/SMC), pensée pour aller vite:
 
-## Avertissement important
+1. tu choisis une paire
+2. tu cliques `Lancer Coach IA`
+3. tu reçois une analyse structurée et exploitable
 
-Cette application est fournie **uniquement à des fins de divertissement et d'apprentissage**.
+Réponse coach attendue:
+- biais de marché
+- setup
+- entrée / SL / TP / RR
+- sections `⚠️ piège`, `🎯 plan`, `💬 coaching`
 
-Ce n'est **pas**:
-- un conseil financier
-- une recommandation d'investissement
-- une incitation à acheter ou vendre un actif
+## Pourquoi cette app
 
-Tu restes seul responsable de tes décisions de trading, de ton risque, et de tes pertes éventuelles.
+- Interface volontairement épurée
+- Aucun bridge TradingView / Chrome CDP
+- BYOK: chaque utilisateur garde sa propre clé API
+- Projet open source facile à améliorer
 
-## Fonctionnalités principales
+## Fonctionnalités
 
-- Écran d'accueil d'accès utilisateur:
-  - clé API Kimi
-  - ID / session TradingView
-- Écran principal chat plein largeur après validation des accès
-- Bouton `Accès` pour revenir modifier les identifiants
-- Bouton `ICT STRICT` pour forcer un format de réponse coaching
-- Toggle de langue FR/EN
-- Indicateur visuel de chargement pendant l'analyse IA
-- Nettoyage d'affichage (suppression des marqueurs markdown `**` et `##`)
-- Analyse multi-timeframe orientée coaching
-- Ajout systématique des sections:
-  - `⚠️ piège`
-  - `🎯 plan`
-  - `💬 coaching`
+- Écran d'accès initial (clé API Kimi)
+- Écran principal de coaching avec sélection de paire:
+  - XAUUSD
+  - XAGUSD
+  - EURUSD
+  - GBPUSD
+  - USDJPY
+- Bouton `Lancer Coach IA` (analyse en 1 clic)
+- Bouton `Accès` pour modifier la clé
+- Toggle langue `FR/EN`
+- Format coaching structuré côté backend
 
-## Architecture
+## Stack technique
 
-- `server.mjs`: backend principal (chat, prompt coach, logique stricte)
-- `bridge/server.mjs`: bridge TradingView via Chrome DevTools Protocol
-- `public/`: interface frontend
+- Backend Node.js (`server.mjs`)
+- Frontend HTML/CSS/JS (`public/`)
+- API Kimi pour le moteur IA
+- Service OHLC via endpoint Yahoo Finance
 
-## Prérequis
-
-- Node.js 18+
-- clé API Kimi (Moonshot)
-- TradingView ouvert dans Chrome (debug géré automatiquement par le bridge)
-
-## Installation et lancement
+## Installation
 
 ```bash
 npm install
-npm run bridge:dev
 npm run dev
 ```
 
-Application:
+Application locale:
 - http://127.0.0.1:3000
-
-Bridge health:
-- http://127.0.0.1:8787/health
-
-## Utilisation FR / EN
-
-- L'application démarre avec la langue précédemment utilisée (mémorisée localement).
-- Pour passer en français ou en anglais, utilise le bouton `FR/EN` en haut à droite de l'interface.
-- Le changement de langue s'applique à l'UI et au style de réponse du coach.
 
 ## Variables d'environnement
 
-Exemple dans `.env`:
+Créer `.env` depuis `.env.example`:
 
 ```env
-TRADINGVIEW_BRIDGE_URL=http://127.0.0.1:8787
-CHROME_DEBUG_URL=http://127.0.0.1:9222
-TV_TAB_MATCH=tradingview.com
-AUTO_START_CHROME=true
+KIMI_API_KEY=
+KIMI_BASE_URL=https://api.moonshot.ai/v1
+PORT=3000
 ```
 
-## Publication GitHub public
+## Contribuer
 
-```bash
-git init
-git add -A
-git commit -m "feat: coach ict app"
-git branch -M main
-git remote add origin https://github.com/<TON_USER>/<TON_REPO>.git
-git push -u origin main
-```
+Les contributions sont bienvenues:
+- amélioration du prompt ICT/SMC
+- amélioration de la clarté des plans de trade
+- amélioration UX/performance
+- ajout de tests/validations
 
-Puis sur GitHub:
-- Settings -> General -> Visibility -> Public
+Ouvre une issue ou une PR.
 
-## Sécurité
+## Avertissement
 
-- Ne commit jamais de secrets (`.env` est ignoré)
-- Utilise des clés API individuelles
-- Révoque/regénère immédiatement une clé exposée
+Application fournie uniquement à des fins éducatives et de divertissement.
+Ce n'est pas un conseil financier ni une incitation à investir.
+Tu restes entièrement responsable de tes décisions et de ton risque.

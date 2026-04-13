@@ -1,97 +1,77 @@
 # COACH ICT (EN)
 
-COACH ICT is a local web app combining:
-- AI chat (Kimi API)
-- TradingView bridge (CDP)
-- structured ICT/SMC coaching mode (1H, 15M, 5M)
+COACH ICT is an AI trading coach app (ICT/SMC style) designed for fast execution:
 
-## Important disclaimer
+1. select a pair
+2. click `Run AI Coach`
+3. get a structured coaching output
 
-This app is provided **for entertainment and learning purposes only**.
+Typical response includes:
+- market bias
+- setup logic
+- entry / SL / TP / RR
+- `⚠️ trap`, `🎯 plan`, `💬 coaching` sections
 
-It is **not**:
-- financial advice
-- investment advice
-- an invitation to buy or sell any asset
+## Why this project
 
-You are solely responsible for your trading decisions, risk management, and any losses.
+- Clean interface, minimal friction
+- No TradingView bridge or Chrome CDP dependency
+- BYOK model (users keep their own API key)
+- Open-source and contributor-friendly
 
-## Main features
+## Features
 
-- First access screen:
-  - Kimi API key
-  - TradingView ID/session
-- Full-width main chat screen after access validation
-- `Access` button to reopen credentials screen and edit keys
-- `ICT STRICT` toggle to force structured coaching responses
+- Access onboarding with Kimi API key
+- Main coaching screen with pair selector:
+  - XAUUSD
+  - XAGUSD
+  - EURUSD
+  - GBPUSD
+  - USDJPY
+- One-click analysis via `Run AI Coach`
+- `Access` button to edit credentials
 - FR/EN language toggle
-- Visible loading indicator while AI is processing
-- Output cleanup (removes markdown markers `**` and `##`)
-- Multi-timeframe coaching analysis
-- Always includes sections:
-  - `⚠️ trap`
-  - `🎯 plan`
-  - `💬 coaching`
+- Structured coach formatting enforced by backend
 
-## Architecture
+## Tech stack
 
-- `server.mjs`: main backend (chat, coach prompt, strict flow)
-- `bridge/server.mjs`: TradingView bridge via Chrome DevTools Protocol
-- `public/`: frontend interface
-
-## Requirements
-
-- Node.js 18+
-- Kimi API key (Moonshot)
-- TradingView open in Chrome (debug can be auto-started by the bridge)
+- Node.js backend (`server.mjs`)
+- Vanilla frontend (`public/`)
+- Kimi API for AI coaching
+- OHLC service via Yahoo Finance endpoint
 
 ## Install and run
 
 ```bash
 npm install
-npm run bridge:dev
 npm run dev
 ```
 
 App:
 - http://127.0.0.1:3000
 
-Bridge health:
-- http://127.0.0.1:8787/health
-
-## FR / EN usage
-
-- The app starts with the last selected language (stored locally).
-- To switch between French and English, use the `FR/EN` button at the top-right of the interface.
-- Language switching applies to both UI labels and coach response style.
-
 ## Environment variables
 
-Example `.env`:
+Create `.env` from `.env.example`:
 
 ```env
-TRADINGVIEW_BRIDGE_URL=http://127.0.0.1:8787
-CHROME_DEBUG_URL=http://127.0.0.1:9222
-TV_TAB_MATCH=tradingview.com
-AUTO_START_CHROME=true
+KIMI_API_KEY=
+KIMI_BASE_URL=https://api.moonshot.ai/v1
+PORT=3000
 ```
 
-## Public GitHub push
+## Contributing
 
-```bash
-git init
-git add -A
-git commit -m "feat: coach ict app"
-git branch -M main
-git remote add origin https://github.com/<YOUR_USER>/<YOUR_REPO>.git
-git push -u origin main
-```
+Contributions are welcome:
+- better ICT/SMC prompting
+- better risk-management clarity
+- UX/performance improvements
+- tests and validation improvements
 
-Then on GitHub:
-- Settings -> General -> Visibility -> Public
+Open an issue or submit a PR.
 
-## Security
+## Disclaimer
 
-- Never commit secrets (`.env` is gitignored)
-- Use per-user API keys
-- Revoke/regenerate exposed keys immediately
+For educational and entertainment purposes only.
+Not financial advice, investment advice, or trading solicitation.
+You are fully responsible for your decisions and risk.
